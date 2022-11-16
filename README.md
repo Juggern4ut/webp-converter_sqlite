@@ -4,7 +4,7 @@ This small python script will recusiveley convert all images in a given folder i
 ## Usage
 Run the `convert.py` file and pass it two arguments. The first argument is the folder that you want to convert, the second is the quality that the conversion should have. The recommended value here is 80.
 
-`python conver.py nas 80`
+`python convert.py nas 80`
 
 ## When will conversion take place
 
