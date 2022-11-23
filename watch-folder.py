@@ -4,6 +4,7 @@ import signal
 import sys
 from subprocess import call
 import sqlite3
+import time
 import logging
 
 path = sys.argv[1]
@@ -46,6 +47,8 @@ def convert_folder(path):
     files = os.scandir(path)
     for f in files:
         if f.is_dir():
+            if(os.path.basename(f) == "bzAnnot"):
+                continue
             convert_folder(f)
             update_folder(f, quality)
 
@@ -56,7 +59,7 @@ def exit_handler():
     """
     Update the sqlite table if the user force-stops the execution of the script
     """
-    logging.info("Execution stopped, database updated!")
+    logging.warning("Execution stopped, database updated!")
     con.commit()
     exit()
 
@@ -64,6 +67,8 @@ def exit_handler():
 signal.signal(signal.SIGTERM, (lambda signum, frame: exit_handler()))
 signal.signal(signal.SIGINT, (lambda signum, frame: exit_handler()))
 
+start_time = time.time()
 setup_db(cur)
 logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
 convert_folder(path)
+logging.info(f"Script took {time.time() - start_time} seconds.")
