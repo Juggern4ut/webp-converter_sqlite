@@ -30,17 +30,20 @@ def update_folder(path: str, quality: int) -> None:
     If the output directory does not exist, it will create it
     """
     path = os.path.abspath(path)
-    logging.info(f"Checking folder {path}")
     cur.execute(f"SELECT path, timestamp FROM converted_folders WHERE path = '{path}' LIMIT 1")
     res = cur.fetchone()
-    mod_time = os.path.getmtime(path)
-    cmd = f'python convert.py "{path}" {quality} "{logfile}"'
+    mod_time = int(os.path.getmtime(path))
+    cmd = f'python {sys.path[0]}/convert.py "{path}" {quality} "{logfile}"'
     if res == None:
+        logging.info(f"Converting new folder {path}")
         call(cmd, shell=True)
         cur.execute(f"INSERT INTO converted_folders (path, timestamp) VALUES ('{path}', {mod_time})")
-    elif res[1] < mod_time:
+    elif int(res[1]) < mod_time:
+        logging.info(f"Converting updated folder {path} (last converted: {res[1]}, last changed: {mod_time})")
         call(cmd, shell=True)
         cur.execute(f"UPDATE converted_folders SET timestamp = {mod_time} WHERE path='{path}'")
+    else:
+        logging.info(f"Skipping folder {path}")
 
 
 def convert_folder(path):
