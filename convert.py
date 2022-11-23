@@ -125,7 +125,7 @@ def exit_handler():
     """
     Update the sqlite table if the user force-stops the execution of the script
     """
-    logging.warn("Execution cancelled, database updated!")
+    logging.warning("Execution cancelled, database updated!")
     con.commit()
     log_output()
     exit()
