@@ -4,15 +4,17 @@ import signal
 import sys
 from subprocess import call
 import sqlite3
+import logging
+
 
 path = sys.argv[1]
 quality = sys.argv[2]
+logfile = sys.argv[3]
 
 con = sqlite3.connect("logs.db")
 cur = con.cursor()
 
 results = {"new" : 0, "skipped" : 0, "changed" : 0, "missing" : 0, "quality" : 0}
-
 
 def setup_db(cur):
 
@@ -55,56 +57,55 @@ def convert_folder(path):
             )
             res = cur.fetchone()
             if res == None:
-                print(f"Converting new image {originalFile}")
+                logging.info(f"Converting new image {originalFile}")
                 cur.execute(
                     f"INSERT INTO convertion_times (path, file, timestamp, quality) VALUES ('{folder}', '{f.name}', '{timestamp}', {quality})"
                 )
                 convert_image(originalFile, newFile, quality)
                 results["new"] += 1
             elif float(res[2]) < timestamp:
-                print(f"Converting changed file {originalFile}")
+                logging.info(f"Converting changed file {originalFile}")
                 cur.execute(
                     f"UPDATE convertion_times SET timestamp='{timestamp}', quality={quality} WHERE path = '{folder}' AND file='{f.name}'"
                 )
                 convert_image(originalFile, newFile, quality)
                 results["changed"] += 1
             elif int(res[3]) != int(quality):
-                print(f"Converting with new quality {originalFile}")
+                logging.info(f"Converting with new quality {originalFile}")
                 cur.execute(
                     f"UPDATE convertion_times SET timestamp='{timestamp}', quality={quality} WHERE path = '{folder}' AND file='{f.name}'"
                 )
                 convert_image(originalFile, newFile, quality)
                 results["quality"] += 1
             elif not os.path.isfile(newFile):
-                print(f"Converting missing webp file {originalFile}")
+                logging.info(f"Converting missing webp file {originalFile}")
                 cur.execute(
                     f"UPDATE convertion_times SET timestamp='{timestamp}' WHERE path = '{folder}' AND file='{f.name}'"
                 )
                 convert_image(originalFile, newFile, quality)
                 results["missing"] += 1
             else:
-                print(f"Skipping {newFile} since it's up to date")
                 results["skipped"] += 1
 
     con.commit()
 
-def display_output():
+def log_output():
     total_images = results["changed"]+results["missing"]+results["new"]+results["quality"]+results["skipped"]
-    print(f"Files checked in total: {total_images}")
-    print(f"Newly converted files: {results['new']}")
-    print(f"Newly converted due to changes: {results['changed']}")
-    print(f"Newly converted due to missing webp: {results['missing']}")
-    print(f"Newly converted due different quality: {results['quality']}")
-    print(f"Skipped because already up to date: {results['skipped']}")
+    logging.info(f"Files checked in total: {total_images}")
+    logging.info(f"Newly converted files: {results['new']}")
+    logging.info(f"Newly converted due to changes: {results['changed']}")
+    logging.info(f"Newly converted due to missing webp: {results['missing']}")
+    logging.info(f"Newly converted due different quality: {results['quality']}")
+    logging.info(f"Skipped because already up to date: {results['skipped']}")
 
 
 def exit_handler():
     """
     Update the sqlite table if the user force-stops the execution of the script
     """
-    print("Execution cancelled, database updated!")
+    logging.warn("Execution cancelled, database updated!")
     con.commit()
-    display_output()
+    log_output()
     exit()
 
 
@@ -112,5 +113,7 @@ signal.signal(signal.SIGTERM, (lambda signum, frame: exit_handler()))
 signal.signal(signal.SIGINT, (lambda signum, frame: exit_handler()))
 
 setup_db(cur)
+logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
 convert_folder(path)
-display_output()
+
+log_output()
