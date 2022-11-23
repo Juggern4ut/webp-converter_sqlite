@@ -58,6 +58,9 @@ def convert_folder(path):
             convert_folder(f)
         if f.is_file():
 
+            if os.path.getsize(f.path) == 0:
+                continue
+
             if not os.path.splitext(f)[1] in viable_endings:
                 continue 
 
