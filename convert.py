@@ -91,7 +91,7 @@ class Converter:
 
         self.con.commit()
 
-        # Skip folders with the name "bzAnnot"
+        # Skip folders listed in folders_to_skip
         if(os.path.basename(path) in self.folders_to_skip and path.is_dir()):
             return logging.info(f"Skipping excluded folder {os.path.basename(path)}")
 
@@ -170,6 +170,7 @@ class Converter:
         if found_index != -1:
             del res[found_index]
 
+        # If the convert-flag is set, call a subprocess that converts the image to webp
         if will_convert:
             cmd = f'cwebp -quiet "{input_str}" -q {self.quality} -o "{output}"'
             os.makedirs(output.replace(os.path.basename(output), ""), exist_ok=True)
