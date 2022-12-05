@@ -4,7 +4,7 @@ This small python script will recusiveley convert all images in a given folder i
 
 ## Usage
 
-Run the `watch-folder.py` file and pass three arguments to it. The first argument is the folder that you want to convert, the second is the quality that the conversion should have. (The recommended value here is 80.) The third and last argument is the path/name to a log-file that all the output should be written to
+Run the `convert.py` file and pass three arguments to it. The first argument is the folder that you want to convert, the second is the quality that the conversion should have. (The recommended value here is 80.) The third and last argument is the path/name to a log-file that all the output should be written to
 
 ### Example
 
