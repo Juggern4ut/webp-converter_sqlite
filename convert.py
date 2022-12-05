@@ -105,6 +105,7 @@ class Converter:
         self.cur.execute("SELECT timestamp FROM last_run WHERE id = 1")
         last_run = self.cur.fetchone()
 
+        # Filter the files, remove all files which have not changed since the last run
         if last_run != None:
             files = filter(lambda f: os.path.getmtime(f) > last_run[0] or os.path.getctime(f) > last_run[0] or os.path.isdir(f), files)
 
