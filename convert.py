@@ -1,4 +1,6 @@
 from subprocess import call
+from datetime import datetime
+
 import os
 import sqlite3
 import logging
@@ -8,6 +10,9 @@ import time
 class Converter:
 
     def __init__(self, start_folder, quality, logfile):
+
+        self.rename_too_big_logfile(logfile)
+
         logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
         
         self.con = sqlite3.connect("logs.db")
@@ -41,6 +46,17 @@ class Converter:
             self.cur.execute("UPDATE last_run SET timestamp=? WHERE id = 1", (ts,))
 
         self.con.commit()
+
+
+    def rename_too_big_logfile(self, logfile:str):
+        """
+        If the logfile becomes bigger than 20MB, rename the old logfile before creating a new one
+        """
+        if os.path.getsize(logfile) > 20000000:
+            now = datetime.now()
+            ending = logfile.split(".")[len(logfile.split(".")) - 1]
+            new_name = logfile.replace(f".{ending}", f"{now.strftime('-%Y-%m-%d_%H-%M')}.{ending}")
+            os.rename(logfile, new_name)
 
 
     def setup_db(self):
