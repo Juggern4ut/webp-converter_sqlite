@@ -52,6 +52,9 @@ class Converter:
         """
         If the logfile becomes bigger than 20MB, rename the old logfile before creating a new one
         """
+        if not os.path.exists(logfile):
+            return
+            
         if os.path.getsize(logfile) > 20000000:
             now = datetime.now()
             ending = logfile.split(".")[len(logfile.split(".")) - 1]
