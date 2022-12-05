@@ -79,7 +79,7 @@ class Converter:
             self.cur.execute("CREATE TABLE last_run(id, timestamp)")
 
 
-    def getIndexOfTuple(self, l, index, value):
+    def get_index_of_tuple(self, l, index, value):
         """
         Helper function that returns the index of a tuple in a list of tuples
         with a given value
@@ -91,7 +91,10 @@ class Converter:
 
 
     def convert_folder(self, path):
-
+        """
+        Recursively calls itself on all subfolders and calls the image_to_webp function 
+        with all files that are contained in the given path
+        """
         self.con.commit()
 
         # Skip folders listed in folders_to_skip
@@ -134,7 +137,7 @@ class Converter:
         output = output.replace(f".{ending}", ".webp")
 
         folder = input_str.replace(input.name, "")
-        found_index = self.getIndexOfTuple(res, 1, input.name)
+        found_index = self.get_index_of_tuple(res, 1, input.name)
         timestamp = int(os.path.getmtime(input))
 
         will_convert = False

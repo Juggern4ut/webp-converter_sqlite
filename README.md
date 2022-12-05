@@ -10,7 +10,7 @@ Run the `convert.py` file and pass three arguments to it. The first argument is 
 
 `python watch-folder.py ./nas 80 output-log.txt`
 
-> This will convert all images in the folder `./nas` and save them in the folder `./nas_webp`
+> This will convert all images (jpg and png) in the folder `./nas` and save them in the folder `./nas_webp`
 
 ## When will conversion take place
 
@@ -23,3 +23,11 @@ The script keeps track of all the folders and subfolders passed to it, the last 
 ## Running as a task
 
 Depending on the amount of images you want to keep up to date and how ofthen they change, you can run this script as a service. After the script is completed, it will log out the time it took to complete it, so you can guess an estimate on how often you want to run the script. Please consider that the first time, all Folders will have to be converted wich, depending on the data load, may take a very long time.
+
+## Adding more file endings
+
+If you want the script to handle more file endings you can simply edit the list called `allowed_endings` that is set in the constructor of the Converter and add your file endings there.
+
+## Ignoring subfolders
+
+By design the script will skip folders called `bzAnnot`. If you want some more folders ignored, edit the list called `folders_to_skip` that is set in the constructor of the Converter and add the folder names there.
