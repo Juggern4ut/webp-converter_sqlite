@@ -1,141 +1,176 @@
-from fileinput import close
-import os
-import signal
-import sys
 from subprocess import call
+import os
 import sqlite3
 import logging
-from pathlib import Path
+import sys
+import time
 
-path = sys.argv[1]
-quality = sys.argv[2]
-logfile = sys.argv[3]
+class Converter:
 
-viable_endings = [".png", ".jpg"]
-
-con = sqlite3.connect("logs.db")
-cur = con.cursor()
-
-results = {"new" : 0, "skipped" : 0, "changed" : 0, "missing" : 0, "quality" : 0}
-
-def getIndexOfTuple(l, index, value):
-    for pos,t in enumerate(l):
-        if t[index] == value:
-            return pos
-    return -1
-
-def setup_db(cur):
-
-    cur.execute(
-        """ SELECT count(name) FROM sqlite_master WHERE type='table' AND name='convertion_times' """
-    )
-
-    if not cur.fetchone()[0] == 1:
-        cur.execute("CREATE TABLE convertion_times(path, file, timestamp, quality)")
+    def __init__(self, start_folder, quality, logfile):
+        logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
+        
+        self.con = sqlite3.connect("logs.db")
+        self.cur = self.con.cursor()
+        self.quality = quality
+        self.allowed_endings = ["jpg", "png"]
+        self.folders_to_skip = ["bzAnnot"]
+        self.stats = {"new" : 0, "skipped" : 0, "changed" : 0, "missing" : 0, "quality" : 0}
+        
+        self.setup_db()
+        
+        start_time = time.time()
+        self.convert_folder(start_folder)
+        runtime = time.time() - start_time
+        
+        self.update_last_run()
+        self.log_output(runtime)
 
 
-def convert_image(input: str, output: str, quality: int) -> None:
-    """
-    Converts a image to the webp format using the given quality
-    If the output directory does not exist, it will create it
-    """
-    cmd = f'cwebp -quiet "{input}" -q {quality} -o "{output}"'
-    os.makedirs(output.replace(os.path.basename(output), ""), exist_ok=True)
-    call(cmd, shell=True)
+    def update_last_run(self):
+        """
+        Will update (or set) the current timestamp
+        """
+        self.cur.execute("SELECT id FROM last_run WHERE id = 1")
+        res = self.cur.fetchone()
+
+        ts = int(time.time())
+        if res == None:
+            self.cur.execute("INSERT INTO last_run (id, timestamp) VALUES (1, ?)", (ts,))
+        else:
+            self.cur.execute("UPDATE last_run SET timestamp=? WHERE id = 1", (ts,))
+
+        self.con.commit()
 
 
-def convert_folder(path):
-    files = os.scandir(path)
+    def setup_db(self):
+        """
+        Checks if the neccesary tables on the databse exist and create them if not
+        """
+        self.cur.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='convertion_times'")
+        if not self.cur.fetchone()[0] == 1:
+            self.cur.execute("CREATE TABLE convertion_times(path, file, timestamp, quality)")
 
-    if os.path.isdir(path):
+        self.cur.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='converted_folders'")
+        if not self.cur.fetchone()[0] == 1:
+            self.cur.execute("CREATE TABLE converted_folders(path, timestamp)")
 
-        query = f"SELECT path, file, timestamp, quality FROM convertion_times WHERE path = '{os.path.abspath(path)}\\'"
-        cur.execute(query)
-        res = cur.fetchall()
-
-    for f in files:
-        if f.is_dir():
-            convert_folder(f)
-        if f.is_file():
-
-            if os.path.getsize(f.path) == 0:
-                continue
-
-            if not os.path.splitext(f)[1] in viable_endings:
-                continue 
-
-            folder = os.path.abspath(f.path).replace(f.name, "")
-
-            originalFile = os.path.abspath(f.path)
-            newFile = originalFile.replace("nas", "nas_webp")
-            tmpParts = newFile.split(".")
-            ending = tmpParts[len(tmpParts) - 1]
-            newFile = newFile.replace(f".{ending}", ".webp")
-            timestamp = int(os.path.getmtime(f))
-            
-            found_index = getIndexOfTuple(res, 1, f.name)
-
-            if found_index == -1:
-                logging.info(f"Converting new image {originalFile}")
-                cur.execute(
-                    f"INSERT INTO convertion_times (path, file, timestamp, quality) VALUES ('{folder}', '{f.name}', '{timestamp}', {quality})"
-                )
-                convert_image(originalFile, newFile, quality)
-                results["new"] += 1
-            elif int(float(res[found_index][2])) < timestamp:
-                logging.info(f"Converting changed file {originalFile}")
-                cur.execute(
-                    f"UPDATE convertion_times SET timestamp='{timestamp}', quality={quality} WHERE path = '{folder}' AND file='{f.name}'"
-                )
-                convert_image(originalFile, newFile, quality)
-                results["changed"] += 1
-            elif int(res[found_index][3]) != int(quality):
-                logging.info(f"Converting with new quality {originalFile}")
-                cur.execute(
-                    f"UPDATE convertion_times SET timestamp='{timestamp}', quality={quality} WHERE path = '{folder}' AND file='{f.name}'"
-                )
-                convert_image(originalFile, newFile, quality)
-                results["quality"] += 1
-            elif not os.path.isfile(newFile):
-                logging.info(f"Converting missing webp file {originalFile}")
-                cur.execute(
-                    f"UPDATE convertion_times SET timestamp='{timestamp}' WHERE path = '{folder}' AND file='{f.name}'"
-                )
-                convert_image(originalFile, newFile, quality)
-                results["missing"] += 1
-            else:
-                results["skipped"] += 1
-            
-            if found_index != -1:
-                del res[found_index]
-
-    con.commit()
-
-def log_output():
-    total_images = results["changed"]+results["missing"]+results["new"]+results["quality"]+results["skipped"]
-    logging.info(f"Files checked in total: {total_images}")
-    logging.info(f"Newly converted files: {results['new']}")
-    logging.info(f"Newly converted due to changes: {results['changed']}")
-    logging.info(f"Newly converted due to missing webp: {results['missing']}")
-    logging.info(f"Newly converted due different quality: {results['quality']}")
-    logging.info(f"Skipped because already up to date: {results['skipped']}")
+        self.cur.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='last_run'")
+        if not self.cur.fetchone()[0] == 1:
+            self.cur.execute("CREATE TABLE last_run(id, timestamp)")
 
 
-def exit_handler():
-    """
-    Update the sqlite table if the user force-stops the execution of the script
-    """
-    logging.warning("Execution cancelled, database updated!")
-    con.commit()
-    log_output()
-    exit()
+    def getIndexOfTuple(self, l, index, value):
+        """
+        Helper function that returns the index of a tuple in a list of tuples
+        with a given value
+        """
+        for pos, t in enumerate(l):
+            if t[index] == value:
+                return pos
+        return -1
 
 
-signal.signal(signal.SIGTERM, (lambda signum, frame: exit_handler()))
-signal.signal(signal.SIGINT, (lambda signum, frame: exit_handler()))
+    def convert_folder(self, path):
 
-setup_db(cur)
-logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
-convert_folder(path)
+        self.con.commit()
 
-log_output()
+        # Skip folders with the name "bzAnnot"
+        if(os.path.basename(path) in self.folders_to_skip and path.is_dir()):
+            return logging.info(f"Skipping excluded folder {os.path.basename(path)}")
+
+        if os.path.isdir(path):
+            self.cur.execute("SELECT path, file, timestamp, quality FROM convertion_times WHERE path = ?", (os.path.abspath(path)+"\\",))
+            res = self.cur.fetchall()
+
+        files = os.scandir(path)
+
+        # Get the time the script last ran and filter images based on that value
+        self.cur.execute("SELECT timestamp FROM last_run WHERE id = 1")
+        last_run = self.cur.fetchone()
+
+        if last_run != None:
+            files = filter(lambda f: os.path.getmtime(f) > last_run[0] or os.path.getctime(f) > last_run[0] or os.path.isdir(f), files)
+
+        # Loop through all the files and recursivley call this function if its a folder, or convert it otherwise
+        for f in files:
+            if f.is_dir():
+                self.convert_folder(f)
+            if f.is_file():
+                self.image_to_webp(f, res)
+
+
+    def image_to_webp(self, input, res) -> None:
+        """
+        Converts a image to the webp format using the initially set quality and
+        creates the output directory if it does not exist
+        """
+        input_str = os.path.abspath(input)
+        ending = input_str.split(".")[len(input_str.split(".")) - 1]
+        if not ending in self.allowed_endings or os.path.getsize(input_str) == 0:
+            return
+
+        output = input_str.replace("nas", "nas_webp")
+        output = output.replace(f".{ending}", ".webp")
+
+        folder = input_str.replace(input.name, "")
+        found_index = self.getIndexOfTuple(res, 1, input.name)
+        timestamp = int(os.path.getmtime(input))
+
+        will_convert = False
+
+        if found_index == -1:
+            logging.info(f"Converting new image {input_str}")
+            self.cur.execute(
+                "INSERT INTO convertion_times (path, file, timestamp, quality) VALUES (?, ?, ?, ?)", (folder, input.name, timestamp, self.quality)
+            )
+            will_convert = True
+            self.stats["new"] += 1
+        elif int(float(res[found_index][2])) < timestamp:
+            logging.info(f"Converting changed file {input_str}")
+            self.cur.execute(
+                "UPDATE convertion_times SET timestamp=?, quality=? WHERE path = ? AND file=?", (timestamp, self.quality, folder, input.name)
+            )
+            will_convert = True
+            self.stats["changed"] += 1
+        elif int(res[found_index][3]) != int(self.quality):
+            logging.info(f"Converting with new quality {input_str}")
+            self.cur.execute(
+                f"UPDATE convertion_times SET timestamp=?, quality=? WHERE path = ? AND file=?", (timestamp, self.quality, folder, input.name)
+            )
+            will_convert = True
+            self.stats["quality"] += 1
+        elif not os.path.isfile(output):
+            logging.info(f"Converting missing webp file {input_str}")
+            self.cur.execute(
+                f"UPDATE convertion_times SET timestamp=? WHERE path = ? AND file=?", (timestamp, folder, input.name)
+            )
+            will_convert = True
+            self.stats["missing"] += 1
+        else:
+            self.stats["skipped"] += 1
+        
+        if found_index != -1:
+            del res[found_index]
+
+        if will_convert:
+            cmd = f'cwebp -quiet "{input_str}" -q {self.quality} -o "{output}"'
+            os.makedirs(output.replace(os.path.basename(output), ""), exist_ok=True)
+            call(cmd, shell=True)
+
+
+    def log_output(self, runtime):
+        """
+        Will log the final information to the logfile
+        """
+        logging.info(f"================================================")
+        logging.info(f"Newly converted files: {self.stats['new']}")
+        logging.info(f"Newly converted due to changes: {self.stats['changed']}")
+        logging.info(f"Newly converted due to missing webp: {self.stats['missing']}")
+        logging.info(f"Newly converted due different quality: {self.stats['quality']}")
+        logging.info(f"Checked but skipped: {self.stats['skipped']}")
+        logging.info(f"====== Runtime: {runtime} seconds ======")
+
+
+if __name__ == "__main__":
+	converter = Converter(sys.argv[1], sys.argv[2], sys.argv[3])
