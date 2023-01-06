@@ -1,7 +1,7 @@
 from subprocess import call
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 
+import _thread
 import os
 import logging
 import sys
@@ -19,13 +19,11 @@ class Converter:
         self.allowed_endings = ["jpg", "png"]
         self.folders_to_skip = ["bzAnnot"]
         self.stats = {"new" : 0, "skipped" : 0, "changed" : 0}
-        self.pool = ThreadPoolExecutor(16)
         
         start_time = time.time()
         self.convert_folder(start_folder)
         runtime = time.time() - start_time
 
-        
         self.log_output(runtime)
 
 
@@ -58,7 +56,7 @@ class Converter:
         # Loop through all the files and recursivley call this function if its a folder, or convert it otherwise
         for f in files:
             if f.is_dir():
-                self.pool.map(self.convert_folder(f))
+                _thread.start_new_thread( self.convert_folder, (f,) )
             if f.is_file():
                 self.image_to_webp(f)
 
@@ -75,29 +73,26 @@ class Converter:
 
         output = input_str.replace("nas", "nas_webp")
         output = output.replace(f".{ending}", ".webp")
-
-        folder = input_str.replace(input.name, "")
-        timestamp = int(os.path.getmtime(input))
-
+        original_timestamp = int(os.path.getmtime(input))
         will_convert = False
-
 
         if not os.path.isfile(output):
             logging.info(f"Converting new image {input_str}")
             will_convert = True
             self.stats["new"] += 1
-        elif os.path.isfile(output) and timestamp > os.path.getmtime(output):
+        elif os.path.isfile(output) and original_timestamp > os.path.getmtime(output):
             logging.info(f"Converting changed file {input_str}")
             will_convert = True
             self.stats["changed"] += 1
         else:
+            logging.info(f"Skipping file {input_str}")
             self.stats["skipped"] += 1
 
         # If the convert-flag is set, call a subprocess that converts the image to webp
         if will_convert:
             cmd = f'cwebp -quiet "{input_str}" -q {self.quality} -o "{output}"'
             os.makedirs(output.replace(os.path.basename(output), ""), exist_ok=True)
-            call(cmd, shell=True)
+            call(cmd, shell=True, start_new_session=True)
 
 
     def log_output(self, runtime):
@@ -107,8 +102,6 @@ class Converter:
         logging.info(f"================================================")
         logging.info(f"Newly converted files: {self.stats['new']}")
         logging.info(f"Newly converted due to changes: {self.stats['changed']}")
-        logging.info(f"Newly converted due to missing webp: {self.stats['missing']}")
-        logging.info(f"Newly converted due different quality: {self.stats['quality']}")
         logging.info(f"Checked but skipped: {self.stats['skipped']}")
         logging.info(f"====== Runtime: {runtime} seconds ======")
 
