@@ -1,45 +1,51 @@
 from subprocess import call
 from datetime import datetime
 
-import _thread
+import threading
 import os
 import logging
 import sys
 import time
 
+
 class Converter:
 
-    def __init__(self, start_folder, quality, logfile):
+    def __init__(self, start_folder, quality, logfile, max_threads):
 
         self.rename_too_big_logfile(logfile)
 
-        logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
-        
+        logging.basicConfig(filename=logfile, level=logging.DEBUG,
+                            format="%(asctime)s %(message)s")
+
         self.quality = quality
+        self.max_threads = int(max_threads)
         self.allowed_endings = ["jpg", "png"]
         self.folders_to_skip = ["bzAnnot"]
-        self.stats = {"new" : 0, "skipped" : 0, "changed" : 0}
-        
+        self.stats = {"new": 0, "skipped": 0, "changed": 0}
+        self.threads = []
+
         start_time = time.time()
         self.convert_folder(start_folder)
-        runtime = time.time() - start_time
 
+        for thread in self.threads:
+            thread.join()
+
+        runtime = time.time() - start_time
         self.log_output(runtime)
 
-
-    def rename_too_big_logfile(self, logfile:str):
+    def rename_too_big_logfile(self, logfile: str):
         """
         If the logfile becomes bigger than 20MB, rename the old logfile before creating a new one
         """
         if not os.path.exists(logfile):
             return
-            
+
         if os.path.getsize(logfile) > 20000000:
             now = datetime.now()
             ending = logfile.split(".")[len(logfile.split(".")) - 1]
-            new_name = logfile.replace(f".{ending}", f"{now.strftime('-%Y-%m-%d_%H-%M')}.{ending}")
+            new_name = logfile.replace(
+                f".{ending}", f"{now.strftime('-%Y-%m-%d_%H-%M')}.{ending}")
             os.rename(logfile, new_name)
-
 
     def convert_folder(self, path):
         """
@@ -56,10 +62,17 @@ class Converter:
         # Loop through all the files and recursivley call this function if its a folder, or convert it otherwise
         for f in files:
             if f.is_dir():
-                _thread.start_new_thread( self.convert_folder, (f,) )
+                # Create a new thread if allowed else run method in current thread
+                if len(self.threads) < self.max_threads:
+                    thread = threading.Thread(
+                        target=self.convert_folder, args=(f,))
+                    thread.start()
+                    self.threads.append(thread)
+                else:
+                    self.convert_folder(f)
+
             if f.is_file():
                 self.image_to_webp(f)
-
 
     def image_to_webp(self, input) -> None:
         """
@@ -94,7 +107,6 @@ class Converter:
             os.makedirs(output.replace(os.path.basename(output), ""), exist_ok=True)
             call(cmd, shell=True, start_new_session=True)
 
-
     def log_output(self, runtime):
         """
         Will log the final information to the logfile
@@ -107,4 +119,4 @@ class Converter:
 
 
 if __name__ == "__main__":
-	converter = Converter(sys.argv[1], sys.argv[2], sys.argv[3])
+    converter = Converter(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
