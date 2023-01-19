@@ -1,7 +1,7 @@
 from subprocess import call
 from datetime import datetime
 
-import _thread
+import threading
 import os
 import logging
 import sys
@@ -9,21 +9,26 @@ import time
 
 class Converter:
 
-    def __init__(self, start_folder, quality, logfile):
+    def __init__(self, start_folder, quality, logfile, max_threads):
 
         self.rename_too_big_logfile(logfile)
 
         logging.basicConfig(filename=logfile, level=logging.DEBUG, format="%(asctime)s %(message)s")
         
         self.quality = quality
+        self.max_threads = int(max_threads)
         self.allowed_endings = ["jpg", "png"]
-        self.folders_to_skip = ["bzAnnot"]
+        self.folders_to_skip = ["bzAnnot", "thumbs", "avatars"]
         self.stats = {"new" : 0, "skipped" : 0, "changed" : 0}
+        self.threads = []
         
         start_time = time.time()
         self.convert_folder(start_folder)
-        runtime = time.time() - start_time
 
+        for thread in self.threads:
+            thread.join()
+
+        runtime = time.time() - start_time
         self.log_output(runtime)
 
 
@@ -56,7 +61,13 @@ class Converter:
         # Loop through all the files and recursivley call this function if its a folder, or convert it otherwise
         for f in files:
             if f.is_dir():
-                _thread.start_new_thread( self.convert_folder, (f,) )
+                if len(self.threads) < self.max_threads:
+                    thread = threading.Thread(target=self.convert_folder, args=(f,))
+                    thread.start()
+                    self.threads.append(thread)
+                else:
+                    self.convert_folder(f)
+                
             if f.is_file():
                 self.image_to_webp(f)
 
@@ -107,4 +118,4 @@ class Converter:
 
 
 if __name__ == "__main__":
-	converter = Converter(sys.argv[1], sys.argv[2], sys.argv[3])
+	converter = Converter(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
